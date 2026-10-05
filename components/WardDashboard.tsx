@@ -9,6 +9,7 @@ import {
   DEPARTMENT_CONFIGS,
   WARDS_LIST,
 } from '@/types';
+import { calculatePriorityScore, getPriorityBadgeInfo } from '@/utils/priorityQueue';
 import {
   Search,
   Filter,
@@ -29,7 +30,13 @@ import {
   TrendingUp,
   FileCheck2,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   X,
+  Flame,
+  Users,
+  ArrowUpDown,
+  Layers,
 } from 'lucide-react';
 
 const RESOLUTION_PHOTO_PRESETS = [
@@ -97,7 +104,7 @@ export default function WardDashboard() {
   const { tickets, updateTicketStatus, resolveTicketWithProof, resetToDefaultTickets, isMounted } =
     useTickets();
 
-  // Tick state to force re-render every second for live SLA clocks
+  // Tick state to force re-render every second for live SLA clocks and dynamic priority scores
   const [, setTick] = useState<number>(0);
   useEffect(() => {
     const interval = setInterval(() => {
@@ -111,6 +118,10 @@ export default function WardDashboard() {
   const [selectedDept, setSelectedDept] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortMode, setSortMode] = useState<'priority' | 'newest' | 'deadline'>('priority');
+
+  // Expanded reporters toggle map
+  const [expandedReporters, setExpandedReporters] = useState<Record<string, boolean>>({});
 
   // Resolve Modal State
   const [resolvingTicket, setResolvingTicket] = useState<GrievanceTicket | null>(null);
@@ -128,16 +139,27 @@ export default function WardDashboard() {
     );
   }
 
+  // Calculate dynamic priority scores with real-time SLA elapsed pressure
+  const scoredTickets = tickets.map((t) => ({
+    ...t,
+    priorityScore: calculatePriorityScore(t),
+  }));
+
   // Calculate KPIs
-  const totalCount = tickets.length;
-  const pendingCount = tickets.filter((t) => t.status === 'Pending').length;
-  const inProgressCount = tickets.filter((t) => t.status === 'In Progress').length;
-  const resolvedCount = tickets.filter((t) => t.status === 'Resolved').length;
+  const totalCount = scoredTickets.length;
+  const pendingCount = scoredTickets.filter((t) => t.status === 'Pending').length;
+  const inProgressCount = scoredTickets.filter((t) => t.status === 'In Progress').length;
+  const resolvedCount = scoredTickets.filter((t) => t.status === 'Resolved').length;
   const activeCount = pendingCount + inProgressCount;
-  const urgentCount = tickets.filter((t) => t.urgency === 'High' && t.status !== 'Resolved').length;
+  const urgentCount = scoredTickets.filter(
+    (t) => (t.priorityScore >= 75 || t.urgency === 'High') && t.status !== 'Resolved'
+  ).length;
+  const crowdEscalatedCount = scoredTickets.filter(
+    (t) => (t.reportCount || 1) > 1 && t.status !== 'Resolved'
+  ).length;
 
   // Dynamic SLA Compliance rate
-  const breachedCount = tickets.filter((t) => {
+  const breachedCount = scoredTickets.filter((t) => {
     if (t.status === 'Resolved') return false;
     return new Date(t.deadline).getTime() < Date.now();
   }).length;
@@ -145,7 +167,7 @@ export default function WardDashboard() {
     totalCount > 0 ? (((totalCount - breachedCount) / totalCount) * 100).toFixed(1) : '100.0';
 
   // Apply filters
-  const filteredTickets = tickets.filter((t) => {
+  let filteredTickets = scoredTickets.filter((t) => {
     if (selectedWard !== 'All' && t.ward !== selectedWard) return false;
     if (selectedDept !== 'All' && t.department !== selectedDept) return false;
     if (selectedStatus !== 'All' && t.status !== selectedStatus) return false;
@@ -160,9 +182,30 @@ export default function WardDashboard() {
     return true;
   });
 
+  // Apply sorting
+  filteredTickets.sort((a, b) => {
+    // Keep resolved tickets at the bottom if viewing all
+    if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
+    if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
+
+    if (sortMode === 'priority') {
+      return b.priorityScore - a.priorityScore; // Highest priority score first
+    }
+    if (sortMode === 'newest') {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+    if (sortMode === 'deadline') {
+      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    }
+    return 0;
+  });
+
+  const toggleReporters = (id: string) => {
+    setExpandedReporters((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   const openResolveModal = (t: GrievanceTicket) => {
     setResolvingTicket(t);
-    // Find matching default preset for department
     const preset = RESOLUTION_PHOTO_PRESETS.find((p) => p.dept === t.department);
     setProofImage(preset ? preset.url : RESOLUTION_PHOTO_PRESETS[0].url);
     setResolutionNotes(`Action verified at ${t.ward}. Resolved by BBMP Ward Field Engineer.`);
@@ -182,13 +225,13 @@ export default function WardDashboard() {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium mb-2">
             <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-            BBMP Ward Command Center • Real-Time Dispatch
+            BBMP Ward Command Center • AI Dynamic Priority Queue
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-white">
-            Civic Operations & SLA Dashboard
+            Civic Operations & Priority Dispatch
           </h1>
           <p className="text-slate-400 text-xs md:text-sm">
-            Live grievance intake, AI vernacular translations, and statutory resolution tracking.
+            Live grievance clustering, crowd multipliers, and mathematical priority scoring (0–100 pts).
           </p>
         </div>
 
@@ -213,7 +256,15 @@ export default function WardDashboard() {
             <span className="text-2xl font-extrabold text-white font-mono mt-0.5 block">
               {totalCount}
             </span>
-            <span className="text-[11px] text-slate-500">Across Bengaluru Wards</span>
+            <span className="text-[11px] text-slate-500">
+              {crowdEscalatedCount > 0 ? (
+                <span className="text-amber-400 font-semibold flex items-center gap-1">
+                  <Users className="w-3 h-3" /> {crowdEscalatedCount} Crowd-Clustered
+                </span>
+              ) : (
+                'Across Bengaluru Wards'
+              )}
+            </span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-slate-800/80 text-slate-300 flex items-center justify-center border border-slate-700">
             <Building2 className="w-5 h-5" />
@@ -237,11 +288,13 @@ export default function WardDashboard() {
 
         <div className="glass-panel p-4 rounded-2xl border border-slate-700/60 flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-400 font-medium block">High Urgency</span>
+            <span className="text-xs text-slate-400 font-medium block">Critical Hazards</span>
             <span className="text-2xl font-extrabold text-red-400 font-mono mt-0.5 block">
               {urgentCount}
             </span>
-            <span className="text-[11px] text-red-400/80">Requires Priority Crew</span>
+            <span className="text-[11px] text-red-400/80 flex items-center gap-1">
+              <Flame className="w-3 h-3" /> Priority Score &gt; 75 pts
+            </span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center border border-red-500/30">
             <AlertTriangle className="w-5 h-5" />
@@ -264,27 +317,27 @@ export default function WardDashboard() {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
+      {/* Filter and Search Bar with Dynamic Sort Switcher */}
       <div className="glass-panel p-4 rounded-2xl border border-slate-700/60 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
           {/* Search Box */}
-          <div className="md:col-span-4 relative">
+          <div className="md:col-span-3 relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by ID (JS-BLR-xxxx) or keyword..."
+              placeholder="Search by ID or keyword..."
               className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             />
           </div>
 
           {/* Ward Filter */}
-          <div className="md:col-span-3">
+          <div className="md:col-span-2">
             <select
               value={selectedWard}
               onChange={(e) => setSelectedWard(e.target.value)}
-              className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             >
               <option value="All">All Municipal Wards</option>
               {WARDS_LIST.map((w) => (
@@ -300,7 +353,7 @@ export default function WardDashboard() {
             <select
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
-              className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             >
               <option value="All">All Departments</option>
               <option value="Solid Waste Management">Solid Waste Management (SWM)</option>
@@ -308,6 +361,38 @@ export default function WardDashboard() {
               <option value="Electrical & Streetlighting">Electrical & Streetlighting (BESCOM)</option>
               <option value="Public Works (PWD)">Public Works (BBMP PWD)</option>
             </select>
+          </div>
+
+          {/* Sort Selector: AI Priority Queue vs Newest */}
+          <div className="md:col-span-2">
+            <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80">
+              <button
+                type="button"
+                onClick={() => setSortMode('priority')}
+                title="Sort by AI Priority Queue (Ranked 0-100)"
+                className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                  sortMode === 'priority'
+                    ? 'bg-red-500/20 text-red-300 border border-red-500/40 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Flame className="w-3 h-3 text-red-400" />
+                <span>AI Rank</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortMode('newest')}
+                title="Sort by Newest First"
+                className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                  sortMode === 'newest'
+                    ? 'bg-slate-700 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Clock className="w-3 h-3 text-slate-300" />
+                <span>Newest</span>
+              </button>
+            </div>
           </div>
 
           {/* Status Tabs */}
@@ -330,7 +415,7 @@ export default function WardDashboard() {
         </div>
       </div>
 
-      {/* Ticket Cards Grid (Dual-View Design) */}
+      {/* Ticket Cards Grid (Priority Queue & Dual-View Design) */}
       <div className="space-y-4">
         {filteredTickets.length === 0 ? (
           <div className="glass-panel rounded-2xl p-12 text-center border border-slate-800">
@@ -341,7 +426,7 @@ export default function WardDashboard() {
             </p>
           </div>
         ) : (
-          filteredTickets.map((ticket) => {
+          filteredTickets.map((ticket, index) => {
             const deptConfig = DEPARTMENT_CONFIGS[ticket.department] || {
               name: ticket.department,
               code: 'GEN',
@@ -353,39 +438,73 @@ export default function WardDashboard() {
             };
 
             const remaining = getRemainingTime(ticket.deadline, ticket.status);
+            const priorityBadge = getPriorityBadgeInfo(ticket.priorityScore);
+            const hasMultipleReporters = (ticket.reportCount || 1) > 1;
+            const isReportersOpen = expandedReporters[ticket.id];
 
             return (
               <div
                 key={ticket.id}
                 className={`glass-panel rounded-2xl border p-5 transition-all relative overflow-hidden ${
-                  remaining.isBreached
-                    ? 'border-red-500/50 bg-red-950/10'
-                    : remaining.isUrgent && ticket.status !== 'Resolved'
-                    ? 'border-amber-500/50 bg-amber-950/10'
+                  ticket.status === 'Resolved'
+                    ? 'border-slate-800 opacity-80'
+                    : ticket.priorityScore >= 75
+                    ? 'border-red-500/50 bg-red-950/15 shadow-lg shadow-red-950/20'
+                    : ticket.priorityScore >= 50
+                    ? 'border-amber-500/40 bg-amber-950/10'
                     : 'border-slate-800/80 hover:border-slate-700'
                 }`}
               >
                 {/* Top Badge & Tracking Header */}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/70 pb-3 mb-4">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Rank indicator if sorted by priority */}
+                    {sortMode === 'priority' && ticket.status !== 'Resolved' && (
+                      <span className="w-6 h-6 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center text-xs font-mono font-bold border border-slate-700">
+                        #{index + 1}
+                      </span>
+                    )}
+
                     <span className="font-mono text-sm font-extrabold text-white bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-700/70">
                       {ticket.trackingId}
                     </span>
+
+                    {/* Dynamic Mathematical Priority Score Badge */}
+                    <div
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-extrabold flex items-center gap-1.5 border ${priorityBadge.bg} ${priorityBadge.text} ${priorityBadge.border} ${
+                        priorityBadge.isPulsing && ticket.status !== 'Resolved'
+                          ? 'animate-pulse ring-1 ring-red-500/40'
+                          : ''
+                      }`}
+                    >
+                      <Flame className="w-3.5 h-3.5" />
+                      <span>Priority: {ticket.priorityScore}/100</span>
+                      <span className="text-[10px] uppercase font-sans tracking-wider px-1 py-0.2 rounded bg-slate-950/40">
+                        {priorityBadge.badgeLabel}
+                      </span>
+                    </div>
+
+                    {/* Crowd Escalation Multiplier Badge */}
+                    {hasMultipleReporters && (
+                      <button
+                        type="button"
+                        onClick={() => toggleReporters(ticket.id)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25 transition-all flex items-center gap-1.5"
+                      >
+                        <Users className="w-3.5 h-3.5 text-amber-400" />
+                        <span>👥 {ticket.reportCount} Citizens Escalated</span>
+                        {isReportersOpen ? (
+                          <ChevronUp className="w-3 h-3 text-amber-400" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3 text-amber-400" />
+                        )}
+                      </button>
+                    )}
+
                     <span
                       className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${deptConfig.badgeBg} ${deptConfig.badgeText} ${deptConfig.borderColor}`}
                     >
                       {ticket.department}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                        ticket.urgency === 'High'
-                          ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          : ticket.urgency === 'Medium'
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                          : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {ticket.urgency} Urgency
                     </span>
                   </div>
 
@@ -424,6 +543,45 @@ export default function WardDashboard() {
                     </span>
                   </div>
                 </div>
+
+                {/* Expandable Clustered Reporters Drawer */}
+                {hasMultipleReporters && isReportersOpen && (
+                  <div className="mb-4 p-3.5 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-2.5 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between text-xs font-bold text-amber-300 border-b border-slate-800 pb-2">
+                      <span className="flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5" />
+                        Clustered Duplicate Reports ({ticket.reportCount} Citizens)
+                      </span>
+                      <span className="text-[11px] text-amber-400/80 font-mono">
+                        +{(ticket.reportCount - 1) * 12} Crowd Priority Points Added
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                      {ticket.reporters?.map((rep, rIdx) => (
+                        <div
+                          key={rIdx}
+                          className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-xs flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-semibold text-white block truncate">
+                              {rIdx + 1}. {rep.name}
+                            </span>
+                            <span className="text-[11px] text-slate-400 font-mono">
+                              {rep.phone}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-mono flex-shrink-0">
+                            {new Date(rep.timestamp).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Dual-View Grievance Columns */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -468,6 +626,11 @@ export default function WardDashboard() {
                     <span className="flex items-center gap-1 text-slate-300 font-medium">
                       <User className="w-3.5 h-3.5 text-slate-500" />
                       {ticket.citizenName}
+                      {hasMultipleReporters && (
+                        <span className="text-[11px] text-amber-400 font-bold">
+                          +{ticket.reportCount - 1} more
+                        </span>
+                      )}
                     </span>
                     <span className="flex items-center gap-1 font-mono text-slate-400">
                       <Phone className="w-3.5 h-3.5 text-slate-500" />

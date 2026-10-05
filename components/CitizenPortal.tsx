@@ -20,6 +20,9 @@ import {
   Volume2,
   ShieldCheck,
   ArrowRight,
+  Flame,
+  Users,
+  Layers,
 } from 'lucide-react';
 
 interface QuickChip {
@@ -212,9 +215,9 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
 
       // Ensure minimum 2s elapsed for user to experience the full stepper
       setTimeout(() => {
-        addTicket(ticket);
+        const result = addTicket(ticket);
         setIsSubmitting(false);
-        setReceiptTicket(ticket);
+        setReceiptTicket(result.ticket);
       }, 2100);
     } catch (err) {
       console.error('Submission failed, triggering resilient fallback', err);
@@ -237,10 +240,13 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
           createdAt: new Date().toISOString(),
           deadline: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
           status: 'Pending',
+          reportCount: 1,
+          reporters: [{ name: citizenName, phone, timestamp: new Date().toISOString() }],
+          priorityScore: 30,
         };
-        addTicket(fallbackTicket);
+        const result = addTicket(fallbackTicket);
         setIsSubmitting(false);
-        setReceiptTicket(fallbackTicket);
+        setReceiptTicket(result.ticket);
       }, 2100);
     }
   };
@@ -338,6 +344,12 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
                   </button>
                 );
               })}
+            </div>
+            
+            {/* Indic Language Support Badge */}
+            <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span>Supported: All 22 Scheduled Indian Languages (Text) • Top Indic Dialects (Voice via Web Speech / Bhashini)</span>
             </div>
           </div>
 
@@ -561,20 +573,45 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
               </span>
             </div>
 
-            {/* Department & SLA badge row */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block mb-1">Assigned Department</span>
-                <span className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
-                  <Building2 className="w-4 h-4" />
+            {/* Crowd Multiplier / Deduplication Banner */}
+            {receiptTicket.isMerged && (
+              <div className="p-4 rounded-xl bg-amber-500/15 border border-amber-500/40 space-y-1.5 animate-in fade-in duration-300">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
+                    Duplicate Hazard Clustered • Crowd Multiplier Activated
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/30 text-amber-200">
+                    Reporter #{receiptTicket.reportCount}
+                  </span>
+                </div>
+                <p className="text-xs text-amber-100/90 leading-relaxed">
+                  Another citizen previously reported this hazard at <strong>{receiptTicket.ward}</strong>. Your report has upvoted Master Ticket <strong className="font-mono text-white">{receiptTicket.trackingId}</strong> and escalated its Priority Score to <strong className="text-white font-mono">{receiptTicket.priorityScore}/100</strong> on the Ward Command queue!
+                </p>
+              </div>
+            )}
+
+            {/* Department, SLA & Priority Score row */}
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block mb-0.5">Department</span>
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 truncate">
+                  <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
                   {receiptTicket.department}
                 </span>
               </div>
-              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block mb-1">Statutory SLA</span>
-                <span className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" />
-                  {receiptTicket.slaHours} Hours Resolution Window
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block mb-0.5">Statutory SLA</span>
+                <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                  {receiptTicket.slaHours}h Window
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block mb-0.5">Priority Rank</span>
+                <span className="text-xs font-bold text-red-400 flex items-center gap-1 font-mono">
+                  <Flame className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                  {receiptTicket.priorityScore}/100
                 </span>
               </div>
             </div>

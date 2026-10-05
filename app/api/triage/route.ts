@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Department, Urgency, SupportedLanguage, GrievanceTicket } from '@/types';
+import { calculatePriorityScore } from '@/utils/priorityQueue';
 
 interface TriageRequestBody {
   text: string;
@@ -214,6 +215,9 @@ export async function POST(req: NextRequest) {
       createdAt: now.toISOString(),
       deadline: deadline.toISOString(),
       status: 'Pending',
+      reportCount: 1,
+      reporters: [{ name: citizenName, phone, timestamp: now.toISOString() }],
+      priorityScore: calculatePriorityScore({ urgency, reportCount: 1, createdAt: now.toISOString(), deadline: deadline.toISOString() }),
     };
 
     return NextResponse.json(newTicket);
@@ -221,6 +225,7 @@ export async function POST(req: NextRequest) {
     console.error('Unexpected error in triage API route:', err);
     // Absolute fail-safe guarantee: even if input was corrupted, return valid ticket
     const now = new Date();
+    const deadline = new Date(now.getTime() + 48 * 3600 * 1000);
     const fallbackTicket: GrievanceTicket = {
       id: `ticket-${Date.now()}`,
       trackingId: `JS-BLR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -236,8 +241,11 @@ export async function POST(req: NextRequest) {
       urgency: 'Medium',
       slaHours: 48,
       createdAt: now.toISOString(),
-      deadline: new Date(now.getTime() + 48 * 3600 * 1000).toISOString(),
+      deadline: deadline.toISOString(),
       status: 'Pending',
+      reportCount: 1,
+      reporters: [{ name: 'Civic Citizen', phone: '+91 98000 00000', timestamp: now.toISOString() }],
+      priorityScore: 30,
     };
     return NextResponse.json(fallbackTicket);
   }

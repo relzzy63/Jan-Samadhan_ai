@@ -10,6 +10,12 @@ export type TicketStatus = 'Pending' | 'In Progress' | 'Resolved';
 
 export type SupportedLanguage = 'Kannada' | 'Hindi' | 'English';
 
+export interface TicketReporter {
+  name: string;
+  phone: string;
+  timestamp: string; // ISO
+}
+
 export interface GrievanceTicket {
   id: string;
   trackingId: string; // e.g. "JS-BLR-2026-1042"
@@ -29,6 +35,12 @@ export interface GrievanceTicket {
   status: TicketStatus;
   proofImage?: string;
   resolutionNotes?: string;
+  
+  // Dynamic Priority Queue & Deduplication Clustering additions
+  reportCount: number; // Defaults to 1; increments when duplicate reports are clustered
+  reporters: TicketReporter[]; // Full list of citizens reporting this hazard
+  priorityScore: number; // Calculated dynamically from 0 to 100
+  isMerged?: boolean; // Set to true when a submission merged into an existing Master Ticket
 }
 
 export interface DepartmentConfig {
