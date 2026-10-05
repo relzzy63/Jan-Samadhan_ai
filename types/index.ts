@@ -36,11 +36,12 @@ export interface GrievanceTicket {
   proofImage?: string;
   resolutionNotes?: string;
   
-  // Dynamic Priority Queue & Deduplication Clustering additions
   reportCount: number; // Defaults to 1; increments when duplicate reports are clustered
   reporters: TicketReporter[]; // Full list of citizens reporting this hazard
   priorityScore: number; // Calculated dynamically from 0 to 100
   isMerged?: boolean; // Set to true when a submission merged into an existing Master Ticket
+  triagedBy?: string; // e.g. "Gemini 2.0 Flash (Cloud AI)" or "Municipal Rule Engine (Fail-safe)"
+  aiStatusMessage?: string; // Status or explanation of AI processing
 }
 
 export interface DepartmentConfig {

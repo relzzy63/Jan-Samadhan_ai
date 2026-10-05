@@ -42,7 +42,7 @@ const QUICK_CHIPS: QuickChip[] = [
     badge: 'ಕನ್ನಡ',
     lang: 'Kannada',
     ward: 'Ward 150 - Bellandur',
-    landmark: 'Opposite Bellandur Lake Gate 2',
+    landmark: 'Green Glen Layout, Near Outer Ring Road',
     text: 'ನಮ್ಮ ಬೆಳ್ಳಂದೂರು ವಾರ್ಡ್ 150 ರಲ್ಲಿ ಕಸದ ತೊಟ್ಟಿ ತುಂಬಿ ರಸ್ತೆಗೆಲ್ಲ ಹರಡಿದೆ, ದಯವಿಟ್ಟು ಬೇಗ ಕ್ಲೀನ್ ಮಾಡಿಸಿ.',
   },
   {
@@ -51,7 +51,7 @@ const QUICK_CHIPS: QuickChip[] = [
     badge: 'हिंदी',
     lang: 'Hindi',
     ward: 'Ward 174 - HSR Layout',
-    landmark: 'Sector 2, 27th Main Junction',
+    landmark: 'Sector 7, 19th Main Road',
     text: 'मेन रोड पर पानी का पाइप फट गया है और पूरा रास्ता भर गया है।',
   },
   {
@@ -60,8 +60,8 @@ const QUICK_CHIPS: QuickChip[] = [
     badge: 'English',
     lang: 'English',
     ward: 'Ward 112 - Indiranagar',
-    landmark: '14th Main near BDA Complex',
-    text: 'Streetlight pole broken and sparking near 14th Main junction.',
+    landmark: '100ft Road Junction, near Metro',
+    text: 'Streetlight pole broken and sparking near junction.',
   },
 ];
 
@@ -633,6 +633,21 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
                 <p className="text-xs text-white">
                   {receiptTicket.englishTranslation}
                 </p>
+              </div>
+            </div>
+
+            {/* AI Engine Status Badge */}
+            <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <div>
+                  <span className="font-semibold text-white block">
+                    AI Triaged by: {receiptTicket.triagedBy || 'Municipal Rule Engine (Fail-safe)'}
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {receiptTicket.aiStatusMessage || 'Validated against BBMP municipal jurisdiction & SLA rules'}
+                  </span>
+                </div>
               </div>
             </div>
 

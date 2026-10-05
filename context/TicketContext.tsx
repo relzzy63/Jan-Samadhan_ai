@@ -293,9 +293,11 @@ export function TicketProvider({ children }: { children: React.ReactNode }) {
         priorityScore: updatedScore,
       };
 
-      const updatedList = [...tickets];
-      updatedList[existingIndex] = updatedTicket;
+      // Move the updated/escalated ticket to the top of the feed so it is immediately visible!
+      const remainingTickets = tickets.filter((_, idx) => idx !== existingIndex);
+      const updatedList = [updatedTicket, ...remainingTickets];
       saveTickets(updatedList);
+      console.log(`>>> [TicketContext] Merged into ticket ${existing.trackingId}. Total count now ${newReportCount}.`);
 
       // Trigger Crowd Escalation alert toast
       showToast(
@@ -333,6 +335,7 @@ export function TicketProvider({ children }: { children: React.ReactNode }) {
 
     const updated = [newTicket, ...tickets];
     saveTickets(updated);
+    console.log(`>>> [TicketContext] Registered NEW ticket ${newTicket.trackingId}. Total tickets: ${updated.length}`);
 
     showToast(
       'Grievance Registered',

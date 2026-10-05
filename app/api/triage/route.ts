@@ -116,36 +116,58 @@ Analyze and categorize this grievance strictly into JSON with these exact fields
 
 Return ONLY raw valid JSON, no markdown formatting, no backticks.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  console.log(`>>> [GEMINI DISPATCH] Contacting Google Gemini for '${text.slice(0, 40)}...'`);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-      },
-    }),
-    signal: AbortSignal.timeout(6000), // 6-second timeout before fallback
-  });
+  // Try gemini-2.0-flash first, then fallback to gemini-1.5-flash
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+  let lastError: any = null;
 
-  if (!response.ok) {
-    throw new Error(`Gemini API returned status ${response.status}`);
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+          },
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+
+      console.log(`>>> [GEMINI RESPONSE] Model: ${model}, HTTP Status: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Gemini ${model} returned ${response.status}: ${errText.slice(0, 150)}`);
+      }
+
+      const data = await response.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) throw new Error('Empty response from Gemini');
+
+      const parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
+      console.log(`>>> [GEMINI SUCCESS] Classified by ${model} into: ${parsed.department}`);
+      return {
+        department: parsed.department as Department,
+        urgency: parsed.urgency as Urgency,
+        slaHours: Number(parsed.slaHours) || 24,
+        englishTranslation: parsed.englishTranslation as string,
+        modelUsed: model,
+      };
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`>>> [GEMINI ATTEMPT FAILED] ${model}:`, err.message);
+    }
   }
 
-  const data = await response.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawText) throw new Error('Empty response from Gemini');
-
-  const parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
-  return {
-    department: parsed.department as Department,
-    urgency: parsed.urgency as Urgency,
-    slaHours: Number(parsed.slaHours) || 24,
-    englishTranslation: parsed.englishTranslation as string,
-  };
+  throw lastError || new Error('All Gemini models failed');
 }
 
 export async function POST(req: NextRequest) {
@@ -159,6 +181,10 @@ export async function POST(req: NextRequest) {
     const phone = body.phone || '+91 98000 00000';
     const inputMode = body.inputMode || 'text';
 
+    console.log(`\n========================================================`);
+    console.log(`>>> [TRIAGE INTAKE] New Civic Report from: ${citizenName} (${ward})`);
+    console.log(`>>> Text: "${text}" [Language: ${language}]`);
+
     if (!text) {
       return NextResponse.json({ error: 'Grievance text is required' }, { status: 400 });
     }
@@ -167,6 +193,8 @@ export async function POST(req: NextRequest) {
     let urgency: Urgency;
     let slaHours: number;
     let englishTranslation: string;
+    let triagedBy: string = 'Municipal Rule Engine (Fail-safe Fallback)';
+    let aiStatusMessage: string = 'Processed deterministically via localized municipal keywords';
 
     const apiKey = process.env.GEMINI_API_KEY;
 
@@ -177,15 +205,20 @@ export async function POST(req: NextRequest) {
         urgency = aiResult.urgency;
         slaHours = aiResult.slaHours;
         englishTranslation = aiResult.englishTranslation;
-      } catch (geminiError) {
-        console.warn('Gemini triage failed or timed out. Gracefully switching to rule-based engine:', geminiError);
+        triagedBy = `Google Gemini (${aiResult.modelUsed})`;
+        aiStatusMessage = `Classified live via Google Cloud Gemini AI`;
+      } catch (geminiError: any) {
+        console.warn('>>> [FALLBACK TRIGGERED] Gemini error:', geminiError.message);
         const fallback = runRuleBasedFallback(text, language);
         department = fallback.department;
         urgency = fallback.urgency;
         slaHours = fallback.slaHours;
         englishTranslation = fallback.englishTranslation;
+        triagedBy = 'Municipal Rule Engine (Fail-safe Fallback)';
+        aiStatusMessage = `Gemini auth rejected (${geminiError.message.slice(0, 60)}...). Handled safely by BBMP Keyword Engine.`;
       }
     } else {
+      console.log('>>> [NOTICE] No GEMINI_API_KEY detected. Using Municipal Rule Engine.');
       const fallback = runRuleBasedFallback(text, language);
       department = fallback.department;
       urgency = fallback.urgency;
@@ -218,7 +251,12 @@ export async function POST(req: NextRequest) {
       reportCount: 1,
       reporters: [{ name: citizenName, phone, timestamp: now.toISOString() }],
       priorityScore: calculatePriorityScore({ urgency, reportCount: 1, createdAt: now.toISOString(), deadline: deadline.toISOString() }),
+      triagedBy,
+      aiStatusMessage,
     };
+
+    console.log(`>>> [DISPATCH COMPLETE] Assigned to: ${department} | SLA: ${slaHours}h | Tracking: ${trackingId}`);
+    console.log(`========================================================\n`);
 
     return NextResponse.json(newTicket);
   } catch (err: any) {
