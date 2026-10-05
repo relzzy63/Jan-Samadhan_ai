@@ -27,6 +27,25 @@ const KNOWN_TRANSLATIONS: Record<string, string> = {
     'Deep pothole near 80ft road signal creating traffic jam and accident risk.',
 };
 
+function detectScriptLanguage(str: string): string {
+  if (!str || !str.trim()) return 'English';
+  if (/[\u0C80-\u0CFF]/.test(str)) return 'Kannada';
+  if (/[\u0B80-\u0BFF]/.test(str)) return 'Tamil';
+  if (/[\u0C00-\u0C7F]/.test(str)) return 'Telugu';
+  if (/[\u0D00-\u0D7F]/.test(str)) return 'Malayalam';
+  if (/[\u0900-\u097F]/.test(str)) {
+    if (str.includes('आहे') || str.includes('नाही') || str.includes('रस्ता') || str.includes('झाला')) return 'Marathi';
+    return 'Hindi';
+  }
+  if (/[\u0980-\u09FF]/.test(str)) return 'Bengali';
+  if (/[\u0A80-\u0AFF]/.test(str)) return 'Gujarati';
+  if (/[\u0A00-\u0A7F]/.test(str)) return 'Punjabi';
+  if (/[\u0B00-\u0B7F]/.test(str)) return 'Odia';
+  if (/[\u0600-\u06FF]/.test(str)) return 'Urdu';
+  if (/[a-zA-Z]/.test(str)) return 'English';
+  return 'Indian Regional Language';
+}
+
 function runRuleBasedFallback(
   text: string,
   language: SupportedLanguage = 'English'
@@ -63,14 +82,23 @@ function runRuleBasedFallback(
     }
   }
 
-  // 2. Keyword Classification
+  // 2. Keyword Classification (supports 22 Scheduled Indian Languages)
   let department: Department = 'Public Works (PWD)';
   let slaHours = 48;
   let translatedDeptDesc = 'Municipal road/footpath repair required';
 
-  const swmKeywords = ['ಕಸ', 'waste', 'garbage', 'trash', 'ಕಸದ', 'कूड़ा', 'safai', 'kachra', 'dump', 'dustbin', 'litter'];
-  const waterKeywords = ['ನೀರು', 'water', 'pipe', 'leak', 'sewage', 'पानी', 'jal', 'drain', 'kaluve', 'sewer', 'pipeline'];
-  const electKeywords = ['ಬೆಳಕು', 'light', 'pole', 'wire', 'spark', 'बिजली', 'करंट', 'transformer', 'dark', 'streetlight', 'bulb'];
+  const swmKeywords = [
+    'ಕಸ', 'waste', 'garbage', 'trash', 'ಕಸದ', 'कूड़ा', 'safai', 'kachra', 'dump', 'dustbin', 'litter',
+    'குப்பை', 'கழிவு', 'చెత్త', 'వ్యర్థాలు', 'മാലിന്യം', 'আবর্জনা', 'ময়লা', 'કચરો', 'ਕੂੜਾ'
+  ];
+  const waterKeywords = [
+    'ನೀರು', 'water', 'pipe', 'leak', 'sewage', 'पानी', 'jal', 'drain', 'kaluve', 'sewer', 'pipeline',
+    'தண்ணீர்', 'குழாய்', 'சாக்கடை', 'పైపు', 'మురుగు', 'വെള്ളം', 'പൈപ്പ്', 'জল', 'પાણી', 'ਪਾਣੀ'
+  ];
+  const electKeywords = [
+    'ಬೆಳಕು', 'light', 'pole', 'wire', 'spark', 'बिजली', 'करंट', 'transformer', 'dark', 'streetlight', 'bulb',
+    'மின்சாரம்', 'விளக்கு', 'విద్యుత్', 'దీపం', 'വൈദ്യുതി', 'বিদ্যুৎ', 'વીજળી', 'ਬਿਜਲੀ'
+  ];
 
   if (swmKeywords.some((kw) => lower.includes(kw))) {
     department = 'Solid Waste Management';
@@ -89,7 +117,8 @@ function runRuleBasedFallback(
   // 3. Urgency Heuristic
   const highUrgencyKeywords = [
     'burst', 'spark', 'accident', 'danger', 'hazard', 'overflowing',
-    'deep', 'emergency', 'fat gaya', 'फट गया', 'ತುಂಬಿ', 'ಅಪಾಯ', 'करंट', 'urgent', 'immediately'
+    'deep', 'emergency', 'fat gaya', 'फट गया', 'ತುಂಬಿ', 'ಅಪಾಯ', 'करंट', 'urgent', 'immediately',
+    'ஆபத்து', 'ప్రమాదం', 'বিপদ'
   ];
   const urgency: Urgency = highUrgencyKeywords.some((kw) => lower.includes(kw)) ? 'High' : 'Medium';
 
@@ -174,16 +203,25 @@ export async function POST(req: NextRequest) {
   try {
     const body: TriageRequestBody = await req.json();
     const text = (body.text || '').trim();
-    const language: SupportedLanguage = body.language || 'English';
+    const inputLanguage: SupportedLanguage = body.language || 'English';
     const ward = body.ward || 'Ward 150 - Bellandur';
     const landmark = body.landmark || 'Near main junction';
     const citizenName = body.citizenName || 'Civic Citizen';
     const phone = body.phone || '+91 98000 00000';
     const inputMode = body.inputMode || 'text';
 
+    // Auto-detect dialect/script if "Auto-Detect" selected
+    const detectedScript = detectScriptLanguage(text);
+    const resolvedLanguage = (inputLanguage === 'Auto-Detect' || !inputLanguage)
+      ? detectedScript
+      : inputLanguage;
+    const recordedLanguage = (inputLanguage === 'Auto-Detect')
+      ? `${detectedScript} (Auto-Detected)`
+      : inputLanguage;
+
     console.log(`\n========================================================`);
     console.log(`>>> [TRIAGE INTAKE] New Civic Report from: ${citizenName} (${ward})`);
-    console.log(`>>> Text: "${text}" [Language: ${language}]`);
+    console.log(`>>> Text: "${text}" [Language: ${recordedLanguage}]`);
 
     if (!text) {
       return NextResponse.json({ error: 'Grievance text is required' }, { status: 400 });
@@ -200,7 +238,7 @@ export async function POST(req: NextRequest) {
 
     if (apiKey) {
       try {
-        const aiResult = await runGeminiTriage(text, language, apiKey);
+        const aiResult = await runGeminiTriage(text, resolvedLanguage, apiKey);
         department = aiResult.department;
         urgency = aiResult.urgency;
         slaHours = aiResult.slaHours;
@@ -209,7 +247,7 @@ export async function POST(req: NextRequest) {
         aiStatusMessage = `Classified live via Google Cloud Gemini AI`;
       } catch (geminiError: any) {
         console.warn('>>> [FALLBACK TRIGGERED] Gemini error:', geminiError.message);
-        const fallback = runRuleBasedFallback(text, language);
+        const fallback = runRuleBasedFallback(text, resolvedLanguage);
         department = fallback.department;
         urgency = fallback.urgency;
         slaHours = fallback.slaHours;
@@ -219,7 +257,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       console.log('>>> [NOTICE] No GEMINI_API_KEY detected. Using Municipal Rule Engine.');
-      const fallback = runRuleBasedFallback(text, language);
+      const fallback = runRuleBasedFallback(text, resolvedLanguage);
       department = fallback.department;
       urgency = fallback.urgency;
       slaHours = fallback.slaHours;
@@ -239,7 +277,7 @@ export async function POST(req: NextRequest) {
       ward,
       landmark,
       inputMode,
-      originalLanguage: language,
+      originalLanguage: recordedLanguage,
       originalText: text,
       englishTranslation,
       department,

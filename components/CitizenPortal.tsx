@@ -23,6 +23,7 @@ import {
   Flame,
   Users,
   Layers,
+  Globe,
 } from 'lucide-react';
 
 interface QuickChip {
@@ -63,6 +64,15 @@ const QUICK_CHIPS: QuickChip[] = [
     landmark: '100ft Road Junction, near Metro',
     text: 'Streetlight pole broken and sparking near junction.',
   },
+  {
+    id: 'chip-auto',
+    label: '✨ Auto-Detect (தமிழ் - குடிநீர்)',
+    badge: 'தமிழ்',
+    lang: 'Auto-Detect',
+    ward: 'Ward 80 - Koramangala',
+    landmark: '80ft Road, 4th Block Signal',
+    text: 'பிரதான சாலையில் குடிநீர் குழாய் உடைந்து தண்ணீர் வீணாகிறது, உடனடியாக சரிசெய்யவும்.',
+  },
 ];
 
 const STEPPER_STAGES = [
@@ -71,6 +81,25 @@ const STEPPER_STAGES = [
   { title: 'Classifying Municipal Department...', desc: 'Mapping to BBMP SWM, BWSSB, BESCOM or PWD jurisdiction' },
   { title: 'Assigning Ward Officer & Enforcing SLA...', desc: 'Setting binding statutory countdown timer' },
 ];
+
+export function detectIndicScript(str: string): string {
+  if (!str || !str.trim()) return '';
+  if (/[\u0C80-\u0CFF]/.test(str)) return 'Kannada (ಕನ್ನಡ)';
+  if (/[\u0B80-\u0BFF]/.test(str)) return 'Tamil (தமிழ்)';
+  if (/[\u0C00-\u0C7F]/.test(str)) return 'Telugu (తెలుగు)';
+  if (/[\u0D00-\u0D7F]/.test(str)) return 'Malayalam (മലയാളം)';
+  if (/[\u0900-\u097F]/.test(str)) {
+    if (str.includes('आहे') || str.includes('नाही') || str.includes('रस्ता') || str.includes('झाला')) return 'Marathi (मराठी)';
+    return 'Hindi (हिंदी)';
+  }
+  if (/[\u0980-\u09FF]/.test(str)) return 'Bengali / Assamese (বাংলা)';
+  if (/[\u0A80-\u0AFF]/.test(str)) return 'Gujarati (ગુજરાતી)';
+  if (/[\u0A00-\u0A7F]/.test(str)) return 'Punjabi (ਪੰਜਾਬੀ)';
+  if (/[\u0B00-\u0B7F]/.test(str)) return 'Odia (ଓଡ଼ିଆ)';
+  if (/[\u0600-\u06FF]/.test(str)) return 'Urdu (اردو)';
+  if (/[a-zA-Z]/.test(str)) return 'English';
+  return 'Indic Script Detected';
+}
 
 export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashboard?: () => void }) {
   const { addTicket } = useTickets();
@@ -132,6 +161,8 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
         recognition.lang = 'kn-IN';
       } else if (selectedLanguage === 'Hindi') {
         recognition.lang = 'hi-IN';
+      } else if (selectedLanguage === 'Auto-Detect') {
+        recognition.lang = typeof navigator !== 'undefined' ? (navigator.language || 'kn-IN') : 'kn-IN';
       } else {
         recognition.lang = 'en-IN';
       }
@@ -268,7 +299,7 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
           Report Civic Issue <span className="text-emerald-400">In Any Language</span>
         </h1>
         <p className="text-slate-400 text-sm md:text-base max-w-2xl mx-auto">
-          Speak or type in Kannada, Hindi, or English. Our AI dialect triaging engine instantly categorizes, translates, and enforces BBMP statutory SLAs.
+          Speak or type in Kannada, Hindi, English, or any of India's 22 scheduled languages. Our AI dialect triaging engine instantly categorizes, translates, and enforces BBMP statutory SLAs.
         </p>
       </div>
 
@@ -284,7 +315,7 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
             <span className="text-xs text-slate-500">Perfect for noisy hackathons</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             {QUICK_CHIPS.map((chip) => (
               <button
                 key={chip.id}
@@ -315,12 +346,13 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
               <span>Select Reporting Language</span>
               <span className="text-[11px] text-slate-500">Web Speech API Target Dialect</span>
             </label>
-            <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900/80 rounded-xl border border-slate-800">
-              {(['Kannada', 'Hindi', 'English'] as SupportedLanguage[]).map((lang) => {
-                const labels: Record<SupportedLanguage, string> = {
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-1 bg-slate-900/80 rounded-xl border border-slate-800">
+              {(['Kannada', 'Hindi', 'English', 'Auto-Detect'] as SupportedLanguage[]).map((lang) => {
+                const labels: Record<string, string> = {
                   Kannada: 'ಕನ್ನಡ (Kannada)',
                   Hindi: 'हिंदी (Hindi)',
                   English: 'English (Indian)',
+                  'Auto-Detect': '✨ Detect Language',
                 };
                 const isSel = selectedLanguage === lang;
                 return (
@@ -334,7 +366,7 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
                         setIsRecording(false);
                       }
                     }}
-                    className={`py-2 px-3 rounded-lg text-xs md:text-sm font-semibold transition-all ${
+                    className={`py-2 px-2.5 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 truncate ${
                       isSel
                         ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
                         : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
@@ -361,10 +393,16 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
                 Describe Grievance (Voice or Regional Unicode Text)
               </label>
               <div className="flex items-center gap-2">
+                {selectedLanguage === 'Auto-Detect' && (
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 animate-in fade-in">
+                    <Sparkles className="w-3 h-3 text-emerald-400" />
+                    <span>{text.trim() ? `Detected: ${detectIndicScript(text)}` : 'Auto-detecting 22 Indic dialects...'}</span>
+                  </span>
+                )}
                 {isRecording && (
                   <span className="flex items-center gap-1.5 text-xs text-red-400 font-medium">
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                    Listening live in {selectedLanguage}...
+                    Listening live in {selectedLanguage === 'Auto-Detect' ? 'Auto-Detect' : selectedLanguage}...
                   </span>
                 )}
                 <span className="text-[11px] text-slate-500">{text.length} chars</span>
@@ -382,6 +420,8 @@ export default function CitizenPortal({ onSwitchToDashboard }: { onSwitchToDashb
                     ? 'ಇಲ್ಲಿ ನಿಮ್ಮ ದೂರು ನಮೂದಿಸಿ ಅಥವಾ ಮೈಕ್ ಬಟನ್ ಒತ್ತಿ ಮಾತನಾಡಿ...'
                     : selectedLanguage === 'Hindi'
                     ? 'यहाँ अपनी समस्या लिखें या माइक दबाकर बोलें...'
+                    : selectedLanguage === 'Auto-Detect'
+                    ? 'Type or speak in ANY Indian language (ಕನ್ನಡ, हिंदी, தமிழ், తెలుగు, বাংলা, मराठी, etc.) — dialect auto-detected...'
                     : 'Describe your civic issue or tap the microphone to speak...'
                 }
                 className="w-full rounded-xl bg-slate-900/90 border border-slate-700/80 p-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 pr-24 transition-all"

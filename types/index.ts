@@ -8,7 +8,21 @@ export type Urgency = 'Low' | 'Medium' | 'High';
 
 export type TicketStatus = 'Pending' | 'In Progress' | 'Resolved';
 
-export type SupportedLanguage = 'Kannada' | 'Hindi' | 'English';
+export type SupportedLanguage = 
+  | 'Kannada' 
+  | 'Hindi' 
+  | 'English' 
+  | 'Auto-Detect'
+  | 'Tamil'
+  | 'Telugu'
+  | 'Malayalam'
+  | 'Bengali'
+  | 'Marathi'
+  | 'Gujarati'
+  | 'Odia'
+  | 'Punjabi'
+  | 'Urdu'
+  | string;
 
 export interface TicketReporter {
   name: string;
